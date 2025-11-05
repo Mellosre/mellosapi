@@ -475,6 +475,8 @@ export const generateWAMessageContent = async (
 				}
 				break
 		}
+		} else if ("interactiveMessage" in message) {
+    m.interactiveMessage = message.interactiveMessage;
 	} else if ('ptv' in message && message.ptv) {
 		const { videoMessage } = await prepareWAMessageMedia({ video: message.video }, options)
 		m.ptvMessage = videoMessage
@@ -972,3 +974,26 @@ export const convertlidDevice = (jid:string, lid: string | null | undefined, mei
 	return  jidDevice ? `${lidUser}:${jidDevice}@lid` : `${lidUser}@lid`;
 	}
 
+	/**
+ * this is an experimental patch to make buttons work
+ * Don't know how it works, but it does for now
+ */
+export const patchMessageForMdIfRequired = (message: proto.IMessage) => {
+  const requiresPatch = !!(
+    message.buttonsMessage ||
+    message.listMessage ||
+    message.interactiveMessage
+  );
+
+  if (requiresPatch) {
+    message = {
+      documentWithCaptionMessage: {
+        message: {
+          ...message
+        }
+      }
+    };
+  }
+
+  return message;
+};

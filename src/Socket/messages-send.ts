@@ -28,6 +28,7 @@ import {
 	getWAUploadToServer,
 	normalizeMessageContent,
 	parseAndInjectE2ESessions,
+	patchMessageForMdIfRequired,
 	unixTimestampSeconds,
 	convertlidDevice,
 	getContentType
@@ -684,44 +685,58 @@ const lidCache = new NodeCache({
 				logger.debug({ jid }, 'adding device identity')
 			}
 
+			
+
 			if (additionalNodes && additionalNodes.length > 0) {
 				;(stanza.content as BinaryNode[]).push(...additionalNodes)
 			}
 			const content = normalizeMessageContent(message)!
 				const contentType = getContentType(content)!
 
-				if((isJidGroup(jid) || isJidUser(jid))  || isLidUser(jid) && (
-					contentType === 'interactiveMessage' ||
-					contentType === 'buttonsMessage' ||
-					contentType === 'listMessage'
-				)) {
-					const bizNode: BinaryNode = { tag: 'biz', attrs: {} }
+				if((isJidGroup(jid) || isJidUser(jid)) || isLidUser(jid) && (
+                  contentType === 'interactiveMessage' ||
+           		  contentType === 'buttonsMessage' ||
+  				  contentType === 'listMessage'
+			)) {
+   				 const bizNode: BinaryNode = { tag: 'biz', attrs: {} }
+    
+  				  // Extrai a mensagem interna se for documentWithCaption
+			    const innerMessage = message?.documentWithCaptionMessage?.message || message;
 
-					if((message?.viewOnceMessage?.message?.interactiveMessage || message?.viewOnceMessageV2?.message?.interactiveMessage || message?.viewOnceMessageV2Extension?.message?.interactiveMessage || message?.interactiveMessage) || (message?.viewOnceMessage?.message?.buttonsMessage || message?.viewOnceMessageV2?.message?.buttonsMessage || message?.viewOnceMessageV2Extension?.message?.buttonsMessage || message?.buttonsMessage)) {
-						bizNode.content = [{
-							tag: 'interactive',
-							attrs: {
-								type: 'native_flow',
-								v: '1'
-							},
-							content: [{
-								tag: 'native_flow',
-								attrs: { v: '9', name: 'mixed' }
-							}]
-						}]
-					} else if(message?.listMessage) {
-						// list message only support in private chat
-						bizNode.content = [{
-							tag: 'list',
-							attrs: {
-								type: 'product_list',
-								v: '2'
-							}
-						}]
-					}
+ 			   if(
+  				      (innerMessage?.viewOnceMessage?.message?.interactiveMessage || 
+  				       innerMessage?.viewOnceMessageV2?.message?.interactiveMessage || 
+ 				        innerMessage?.viewOnceMessageV2Extension?.message?.interactiveMessage || 
+ 				        innerMessage?.interactiveMessage) || 
+ 				       (innerMessage?.viewOnceMessage?.message?.buttonsMessage || 
+  				        innerMessage?.viewOnceMessageV2?.message?.buttonsMessage || 
+    			        innerMessage?.viewOnceMessageV2Extension?.message?.buttonsMessage || 
+     				    innerMessage?.buttonsMessage)
+  					  ) {
+        bizNode.content = [{
+            tag: 'interactive',
+            attrs: {
+                type: 'native_flow',
+                v: '1'
+            },
+            content: [{
+                tag: 'native_flow',
+                attrs: { v: '9', name: 'mixed' }
+            }]
+        }]
+    } else if(innerMessage?.listMessage) {
+        // list message only support in private chat
+        bizNode.content = [{
+            tag: 'list',
+            attrs: {
+                type: 'product_list',
+                v: '2'
+            }
+        }]
+    }
 
-					(stanza.content as BinaryNode[]).push(bizNode)
-				}
+    (stanza.content as BinaryNode[]).push(bizNode)
+}
 
 			logger.debug({ msgId }, `sending message to ${participants.length} devices`)
 
@@ -966,6 +981,8 @@ const lidCache = new NodeCache({
 						'cachedGroupMetadata in sendMessage are deprecated, now cachedGroupMetadata is part of the socket config.'
 					)
 				}
+
+				fullMsg.message = patchMessageForMdIfRequired(fullMsg.message!);
 
 				await relayMessage(jid, fullMsg.message!, {
 					messageId: fullMsg.key.id!,
